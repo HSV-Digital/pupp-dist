@@ -1,0 +1,78 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Local env files
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Testing
+.nyc_output
+blob-report/
+coverage
+test-results/
+playwright/.cache/
+playwright-report/
+
+
+# Turbo
+.turbo
+
+# Vercel
+.vercel
+
+# Build Outputs
+.next/
+out/
+build
+dist
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Debug
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Misc
+.DS_Store
+**/.DS_Store
+*.pem
+dump.rdb
+apps/ABSSInsights_CopilotOpportunities_04_14_2026 (1).xlsx
+# Logs
+dev-debug.log
+
+# Task files
+*.csv
+apps/web/tsconfig.tsbuildinfo
+apps/web/next-env.d.ts
+apps/web/src/components/examples/*
+apps/api/dump.rdb
+apps/api/reports/*
+audit_data.json
+usage-report.md
+.taskmaster/
+dist/
+
+UNCOMMITTED_CHANGES.md

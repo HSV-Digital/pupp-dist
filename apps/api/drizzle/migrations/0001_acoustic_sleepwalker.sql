@@ -1,0 +1,1 @@
+ALTER TABLE "partner_customers" ADD COLUMN "region" text DEFAULT 'United States' NOT NULL;

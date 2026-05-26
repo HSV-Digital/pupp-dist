@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Microsoft Security Partners</title>
+  <base href="/">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="It's a new era for Microsoft Security partners—join us! Be a part of the team securing the digital landscape with leading-edge, AI-based technology.">
+  <meta name="keywords" content="Microsoft Security, Microsoft Security Partners, Microsoft Security Partner Portal">
+  <meta property="og:site_name" content="Microsoft Security Partners" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!-- <link href="//amp.azure.net/libs/amp/latest/skins/amp-default/azuremediaplayer.min.css" rel="stylesheet">
+  <script src="//amp.azure.net/libs/amp/latest/azuremediaplayer.min.js"></script> -->
+  <script src="https://wcpstatic.microsoft.com/mscc/lib/v2/wcp-consent.js"  crossorigin="anonymous" ></script>
+<link rel="stylesheet" href="styles.c2866ffa90b050a52dae.css"></head>
+
+<body>
+  <div id="cookie-banner" class="cookie-banner"> </div>
+  <app-root></app-root>
+  <div id="cookie-footer" class="cookie-banner" style="position:fixed; bottom:20px; right:20px;">
+    <button onclick="manageConsent()" style="outline:none; background:transparent; font-size:x-small; border:none;">Manage cookies</button>
+  </div>
+<script src="runtime-es2015.781178f1fa435b71cc9b.js" type="module"></script><script src="runtime-es5.781178f1fa435b71cc9b.js" nomodule defer></script><script src="polyfills-es5.6700fac6b1fc4afb05d9.js" nomodule defer></script><script src="polyfills-es2015.efe92cb197c73423017f.js" type="module"></script><script src="styles-es2015.1967f1ccf2d5ebb25a41.js" type="module"></script><script src="styles-es5.1967f1ccf2d5ebb25a41.js" nomodule defer></script><script src="scripts.3d99efd83c2eafefea53.js" defer></script><script src="main-es2015.b98929dee243d400a7f2.js" type="module"></script><script src="main-es5.b98929dee243d400a7f2.js" nomodule defer></script></body>
+
+</html>

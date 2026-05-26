@@ -1,0 +1,1 @@
+ALTER TABLE "reseller_subscription" ALTER COLUMN "renewal_date" DROP NOT NULL;

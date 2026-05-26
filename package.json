@@ -1,0 +1,44 @@
+{
+	"name": "agent-b",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Self-hosted partner proposal and renewal workflow platform",
+	"author": "",
+	"license": "UNLICENSED",
+	"scripts": {
+		"dev": "turbo run dev",
+		"build": "turbo run build",
+		"test": "turbo run test",
+		"test:e2e": "turbo run test:e2e",
+		"lint": "turbo run lint",
+		"format": "prettier --write \"**/*.{ts,tsx,md}\"",
+		"setup": "tsx scripts/setup.ts"
+	},
+	"devDependencies": {
+		"@inquirer/prompts": "^7.8.6",
+		"@repo/eslint-config": "*",
+		"@repo/typescript-config": "*",
+		"prettier": "^3.2.5",
+		"tsx": "^4.20.5",
+		"turbo": "^2.8.3"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"packageManager": "npm@10.8.2",
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"dependencies": {
+		"lodash.defaults": "^4.2.0",
+		"lodash.isarguments": "^3.1.0",
+		"lodash.isfunction": "^3.0.9"
+	},
+	"overrides": {
+		"@angular-devkit/core": {
+			"picomatch": "4.0.4"
+		},
+		"basic-ftp": "5.2.1"
+	}
+}

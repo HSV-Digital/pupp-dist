@@ -1,0 +1,23 @@
+upstream frontend_blue {
+    server 127.0.0.1:3000;
+}
+
+upstream backend_blue {
+    server 127.0.0.1:3001;
+}
+
+upstream frontend_green {
+    server 127.0.0.1:4000;
+}
+
+upstream backend_green {
+    server 127.0.0.1:4001;
+}
+
+upstream frontend_active {
+    server 127.0.0.1:__FRONTEND_ACTIVE_PORT__;
+}
+
+upstream backend_active {
+    server 127.0.0.1:__BACKEND_ACTIVE_PORT__;
+}

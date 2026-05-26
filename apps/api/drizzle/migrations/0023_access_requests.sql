@@ -1,0 +1,67 @@
+CREATE TABLE IF NOT EXISTS "access_requests" (
+	"id" text PRIMARY KEY NOT NULL,
+	"email" text NOT NULL,
+	"status" text DEFAULT 'pending' NOT NULL,
+	"reviewed_by" text,
+	"reviewed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "access_requests_email_uidx" ON "access_requests" USING btree ("email");
+CREATE INDEX IF NOT EXISTS "access_requests_status_idx" ON "access_requests" USING btree ("status");
+
+-- Seed existing allowed emails as accepted
+INSERT INTO "access_requests" ("id", "email", "status", "created_at", "updated_at")
+VALUES
+  (gen_random_uuid(), 'lyhoffman@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'shalcrow@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'neiwar@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'snpathak@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'dsessions@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'anvicari@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'clbusta@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'miacovino@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'wipachma@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'anspradl@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'ccianciolo@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'wgonzalez@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'stephanieli@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'aokumura@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'fernandome@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'toddshultice@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'lisashep@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'jakes@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'jasjon@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'carousso@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'matamayo@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'abratrud@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'ammarb@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'irenebuchan@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'cbrakefield@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'maxdjb@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'irvsan@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'alancel@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'janetgr@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'hwalovi@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'frietti@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'gerigsby@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'mcurpen@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'shivanir@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'dsilverstain@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'tsol@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'shchau@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'paulinabellamy@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'jijoll@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'adrianabade@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'maricarbesa@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'fedepacheco@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'mewiner@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'woodyw@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'jeffcarr@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'vandan@hsv.digital', 'accepted', now(), now()),
+  (gen_random_uuid(), 'mohit@hsv.digital', 'accepted', now(), now()),
+  (gen_random_uuid(), 'samarth.teotia@hsv.digital', 'accepted', now(), now()),
+  (gen_random_uuid(), 'erwin.visser@microsoft.com', 'accepted', now(), now()),
+  (gen_random_uuid(), 'shubham.choudhary@microsoft.com', 'accepted', now(), now())
+ON CONFLICT ("email") DO NOTHING;

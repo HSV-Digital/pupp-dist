@@ -1,0 +1,309 @@
+#!/usr/bin/env tsx
+import { confirm, input, password, select } from '@inquirer/prompts';
+import { randomBytes } from 'node:crypto';
+import { existsSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+
+const ENV_PATH = path.join(process.cwd(), '.env');
+
+function randomSecret(bytes = 32): string {
+	return randomBytes(bytes).toString('base64url');
+}
+
+function quote(value: string): string {
+	return `"${value.replaceAll('"', '\\"')}"`;
+}
+
+async function main() {
+	console.log('\nProject B setup wizard\n');
+
+	if (existsSync(ENV_PATH)) {
+		const overwrite = await confirm({
+			message: '.env already exists. Overwrite it?',
+			default: false,
+		});
+
+		if (!overwrite) {
+			console.log('Setup cancelled.');
+			return;
+		}
+	}
+
+	const deploymentMode = await select({
+		message: 'Which setup are you preparing?',
+		choices: [
+			{
+				name: 'Local Docker',
+				value: 'local-docker',
+				description: 'Runs web, api, postgres, and redis with docker compose',
+			},
+			{
+				name: 'Self-hosted / managed services',
+				value: 'managed',
+				description: 'Uses external PostgreSQL and Redis services',
+			},
+		],
+	});
+
+	const publicWebUrl = await input({
+		message: 'Public web URL:',
+		default: 'http://localhost:3000',
+		validate: (value) => {
+			try {
+				new URL(value);
+				return true;
+			} catch {
+				return 'Enter a valid URL including http:// or https://';
+			}
+		},
+	});
+
+	const publicApiUrl = await input({
+		message: 'Public API URL:',
+		default: 'http://localhost:3001',
+		validate: (value) => {
+			try {
+				new URL(value);
+				return true;
+			} catch {
+				return 'Enter a valid URL including http:// or https://';
+			}
+		},
+	});
+
+	const internalApiBaseUrl =
+		deploymentMode === 'local-docker'
+			? 'http://api:3001'
+			: await input({
+					message: 'Server-side API base URL used by the web app:',
+					default: publicApiUrl,
+					validate: (value) => {
+						try {
+							new URL(value);
+							return true;
+						} catch {
+							return 'Enter a valid URL including http:// or https://';
+						}
+					},
+				});
+
+	const assetBaseUrl = await input({
+		message: 'Optional public asset base URL (leave blank to serve bundled assets locally):',
+		default: '',
+	});
+
+	const azureAdClientId = await input({
+		message: 'Internal Microsoft Entra client ID:',
+	});
+	const azureAdClientSecret = await password({
+		message: 'Internal Microsoft Entra client secret:',
+		mask: '*',
+	});
+	const resellerAzureAdClientId = await input({
+		message: 'Reseller Microsoft Entra client ID:',
+	});
+	const resellerAzureAdClientSecret = await password({
+		message: 'Reseller Microsoft Entra client secret:',
+		mask: '*',
+	});
+	const googleClientId = await input({
+		message: 'Google OAuth client ID:',
+	});
+	const googleClientSecret = await password({
+		message: 'Google OAuth client secret:',
+		mask: '*',
+	});
+
+	let databaseUrl = 'postgresql://postgres:postgres@postgres:5432/projectb';
+	let postgresPassword = 'postgres';
+	let postgresDb = 'projectb';
+
+	if (deploymentMode === 'managed') {
+		databaseUrl = await input({
+			message: 'PostgreSQL connection string:',
+			validate: (value) =>
+				value.startsWith('postgresql://') || 'Must start with postgresql://',
+		});
+		postgresPassword = '';
+		postgresDb = '';
+	}
+
+	let redisUrl = 'redis://:redis@redis:6379/0';
+	let redisPassword = 'redis';
+
+	if (deploymentMode === 'managed') {
+		redisUrl = await input({
+			message: 'Redis connection string:',
+			validate: (value) =>
+				value.startsWith('redis://') || value.startsWith('rediss://')
+					? true
+					: 'Must start with redis:// or rediss://',
+		});
+		redisPassword = '';
+	}
+
+	const blobStorageEnabled = await confirm({
+		message: 'Configure Azure Blob Storage now?',
+		default: false,
+	});
+
+	let azureStorageAccountName = '';
+	let azureStorageAccountKey = '';
+	let azureStorageContainerName = 'proposal-assets';
+	let azureCdnBaseUrl = '';
+
+	if (blobStorageEnabled) {
+		azureStorageAccountName = await input({
+			message: 'Azure Storage account name:',
+		});
+		azureStorageAccountKey = await password({
+			message: 'Azure Storage account key:',
+			mask: '*',
+		});
+		azureStorageContainerName = await input({
+			message: 'Azure Storage container name:',
+			default: 'proposal-assets',
+		});
+		azureCdnBaseUrl = await input({
+			message: 'Azure CDN base URL (leave blank if not used):',
+			default: '',
+		});
+	}
+
+	const posthogEnabled = await confirm({
+		message: 'Configure PostHog now?',
+		default: false,
+	});
+
+	let nextPublicPosthogKey = '';
+	let nextPublicPosthogHost = 'https://us.i.posthog.com';
+	let posthogProjectToken = '';
+
+	if (posthogEnabled) {
+		nextPublicPosthogKey = await input({
+			message: 'PostHog public key:',
+		});
+		nextPublicPosthogHost = await input({
+			message: 'PostHog host:',
+			default: 'https://us.i.posthog.com',
+		});
+		posthogProjectToken = await password({
+			message: 'PostHog server project token:',
+			mask: '*',
+		});
+	}
+
+	const authSecret = randomSecret();
+
+	const lines = [
+		'# Generated by scripts/setup.ts',
+		'# App URLs',
+		`NODE_ENV=${quote('development')}`,
+		`WEB_PORT=${quote('3000')}`,
+		`API_PORT=${quote('3001')}`,
+		`NEXT_PUBLIC_APP_URL=${quote(publicWebUrl)}`,
+		`FRONTEND_URL=${quote(publicWebUrl)}`,
+		`NEXT_PUBLIC_API_BASE_URL=${quote(publicApiUrl)}`,
+		`API_PUBLIC_BASE_URL=${quote(publicApiUrl)}`,
+		`API_BASE_URL=${quote(internalApiBaseUrl)}`,
+		`PARTNER_UPLOAD_URL=${quote(`${publicWebUrl.replace(/\/+$/, '')}/resellers`)}`,
+		`APP_ORIGIN=${quote(publicWebUrl)}`,
+		`NEXT_PUBLIC_APP_ORIGIN=${quote(publicWebUrl)}`,
+		`SITE_URL=${quote(publicWebUrl)}`,
+		`NEXT_PUBLIC_SITE_URL=${quote(publicWebUrl)}`,
+		`PPT_PUBLIC_ORIGIN=${quote(publicWebUrl)}`,
+		`NEXT_PUBLIC_ASSET_BASE_URL=${quote(assetBaseUrl)}`,
+		`NEXT_PUBLIC_ENABLE_DEMO=${quote('false')}`,
+		'',
+		'# Auth',
+		`AUTH_SECRET=${quote(authSecret)}`,
+		`NEXTAUTH_SECRET=${quote(authSecret)}`,
+		`AUTH_TRUST_HOST=${quote('true')}`,
+		`AZURE_AD_CLIENT_ID=${quote(azureAdClientId)}`,
+		`AZURE_AD_CLIENT_SECRET=${quote(azureAdClientSecret)}`,
+		`AZURE_AD_RESELLER_CLIENT_ID=${quote(resellerAzureAdClientId)}`,
+		`AZURE_AD_RESELLER_CLIENT_SECRET=${quote(
+			resellerAzureAdClientSecret,
+		)}`,
+		`GOOGLE_CLIENT_ID=${quote(googleClientId)}`,
+		`GOOGLE_CLIENT_SECRET=${quote(googleClientSecret)}`,
+		`ALLOWED_TENANT_IDS=${quote('')}`,
+		`DEFAULT_TENANT_ID=${quote('default-tenant')}`,
+		`MICROSOFT_TENANT_ID=${quote('')}`,
+		`HSV_DIGITAL_TENANT_ID=${quote('')}`,
+		`NEXT_PUBLIC_HSV_DIGITAL_TENANT_ID=${quote('')}`,
+		`INTERNAL_ADMIN_TENANT_ID=${quote('')}`,
+		`INTERNAL_TENANT_LABELS=${quote('')}`,
+		'',
+		'# Database',
+		`DATABASE_URL=${quote(databaseUrl)}`,
+		`POSTGRES_USER=${quote('postgres')}`,
+		`POSTGRES_PASSWORD=${quote(postgresPassword)}`,
+		`POSTGRES_DB=${quote(postgresDb)}`,
+		'',
+		'# Redis',
+		`REDIS_URL=${quote(redisUrl)}`,
+		`REDIS_HOST=${quote(deploymentMode === 'local-docker' ? 'redis' : '')}`,
+		`REDIS_PORT=${quote(deploymentMode === 'local-docker' ? '6379' : '')}`,
+		`REDIS_PASSWORD=${quote(redisPassword)}`,
+		`REDIS_DB=${quote('0')}`,
+		'',
+		'# Storage',
+		`AZURE_STORAGE_ACCOUNT_NAME=${quote(azureStorageAccountName)}`,
+		`AZURE_STORAGE_ACCOUNT_KEY=${quote(azureStorageAccountKey)}`,
+		`AZURE_STORAGE_CONTAINER_NAME=${quote(azureStorageContainerName)}`,
+		`AZURE_CDN_BASE_URL=${quote(azureCdnBaseUrl)}`,
+		'',
+		'# Analytics',
+		`NEXT_PUBLIC_POSTHOG_KEY=${quote(nextPublicPosthogKey)}`,
+		`NEXT_PUBLIC_POSTHOG_HOST=${quote(nextPublicPosthogHost)}`,
+		`POSTHOG_PROJECT_TOKEN=${quote(posthogProjectToken)}`,
+		`POSTHOG_CAPTURE_HOST=${quote(nextPublicPosthogHost)}`,
+		`POSTHOG_QUERY_HOST=${quote('https://us.posthog.com')}`,
+		`POSTHOG_ENDPOINT_API_KEY=${quote('')}`,
+		`POSTHOG_PERSONAL_API_KEY=${quote('')}`,
+		`POSTHOG_WEB_PROJECT_ID=${quote('')}`,
+		'',
+		'# App secrets',
+		`DL_TOKEN_ENCRYPTION_KEY=${quote(randomSecret())}`,
+		`PDF_DL_TOKEN_SECRET=${quote(randomSecret())}`,
+		`PDF_DL_TOKEN_TTL_SECONDS=${quote('3600')}`,
+		`PDF_PASSWORD_ENCRYPTION_KEY=${quote(randomSecret())}`,
+		`PPT_TOKEN_SECRET=${quote(randomSecret())}`,
+		`PPT_TOKEN_TTL_SECONDS=${quote('600')}`,
+		`RESELLER_API_TOKEN_SECRET=${quote(randomSecret())}`,
+		`RESELLER_API_TOKEN_TTL_SECONDS=${quote('604800')}`,
+		`PROPOSAL_OPTIONS_EMAIL_TOKEN_TTL_SECONDS=${quote('600')}`,
+		'',
+		'# PDF and worker tuning',
+		`PDF_RENDER_TIMEOUT_MS=${quote('15000')}`,
+		`PDF_MAX_CONCURRENCY=${quote('4')}`,
+		`PDF_CACHE_TTL_SECONDS=${quote('120')}`,
+		`PDF_RENDER_CACHE_VERSION=${quote('v2')}`,
+		`PDF_ASYNC_MIN_PART_SIZE=${quote('1000')}`,
+		`PDF_ASYNC_PART_SIZE=${quote('10000')}`,
+		`PDF_ASYNC_SPLIT_MAX_DEPTH=${quote('4')}`,
+		`QPDF_BINARY=${quote('qpdf')}`,
+		'',
+		'# Optional asset-path overrides for apps/api',
+		`GTM_ASSETS_DIR=${quote('./static/gtm-assets')}`,
+		`EMAIL_TEMPLATES_DIR=${quote('./assets/email_templates')}`,
+		`PROPOSAL_FLYERS_DIR=${quote('./assets/flyers')}`,
+		`BLOB_SAS_EXPIRY_SECONDS=${quote('604800')}`,
+		`PROPOSAL_GENERATION_SELECTION_SNAPSHOT_LAUNCH_AT=${quote(
+			'2026-03-07T00:00:00.000Z',
+		)}`,
+		`RESELLER_EXCLUDED_ORG_DOMAINS=${quote('')}`,
+	];
+
+	writeFileSync(ENV_PATH, `${lines.join('\n')}\n`, 'utf8');
+
+	console.log('\nCreated .env successfully.');
+	console.log('Next step: docker compose --profile local up -d');
+}
+
+main().catch((error) => {
+	console.error('Setup failed.');
+	console.error(error instanceof Error ? error.message : error);
+	process.exit(1);
+});

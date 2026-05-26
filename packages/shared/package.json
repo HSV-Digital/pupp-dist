@@ -1,0 +1,36 @@
+{
+	"name": "@repo/shared",
+	"version": "0.0.0",
+	"private": true,
+	"license": "MIT",
+	"scripts": {
+		"build": "tsc -p .",
+		"dev": "tsc -p . --watch"
+	},
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"./dist/**"
+	],
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"require": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./*": {
+			"types": "./dist/*.d.ts",
+			"import": "./dist/*.js",
+			"require": "./dist/*.js",
+			"default": "./dist/*.js"
+		}
+	},
+	"dependencies": {
+		"@repo/types": "*"
+	},
+	"devDependencies": {
+		"@repo/typescript-config": "*",
+		"typescript": "^5"
+	}
+}

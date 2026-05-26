@@ -1,0 +1,379 @@
+name: Deploy (prod)
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    env:
+      CI: true
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # - name: Lint
+      #   run: npm run lint
+
+      # - name: Test
+      #   run: npm test
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup SSH
+        env:
+          SSH_KEY: ${{ secrets.PROD_EC2_SSH_KEY }}
+          SSH_HOST: ${{ secrets.PROD_EC2_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to idle color (blue/green)
+        env:
+          SSH_HOST: ${{ secrets.PROD_EC2_HOST }}
+          SSH_USER: ${{ secrets.PROD_EC2_USER }}
+          GIT_SHA: ${{ github.sha }}
+          GIT_BRANCH: ${{ github.ref_name }}
+        run: |
+          ssh -o BatchMode=yes "${SSH_USER}@${SSH_HOST}" bash -s -- "$GIT_SHA" "$GIT_BRANCH" <<'REMOTE'
+          set -euo pipefail
+
+          # nvm-installed node/npm/pm2 aren't on the non-interactive PATH
+          export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+          if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+              # shellcheck disable=SC1091
+              . "$NVM_DIR/nvm.sh"
+          fi
+
+          GIT_SHA="$1"
+          GIT_BRANCH="$2"
+
+          # ---- constants (inlined from agent-b's config.sh) ----
+          ROOT_DIR="/home/azureuser/deployments"
+          LOG_DIR="/home/azureuser/logs"
+          STATE_FILE="/home/azureuser/.current_env"
+          NGINX_CONF="/etc/nginx/conf.d/deployments-upstreams.conf"
+          WEB_ENV_FILE="${ROOT_DIR}/env/web.env"
+          API_ENV_FILE="${ROOT_DIR}/env/api.env"
+          DEPLOY_LOG="${LOG_DIR}/deployments.log"
+          WEB_PORT_BLUE=3000
+          API_PORT_BLUE=3001
+          WEB_PORT_GREEN=4000
+          API_PORT_GREEN=4001
+          HEALTH_RETRIES=20
+          HEALTH_SLEEP=3
+          DRAIN_SECONDS=30
+
+          mkdir -p "$LOG_DIR"
+          log() {
+              local msg="[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"
+              echo "$msg"
+              echo "$msg" >> "$DEPLOY_LOG"
+          }
+
+          active_color() { cat "$STATE_FILE" 2>/dev/null || echo "blue"; }
+          idle_color()   { [[ "$(active_color)" == "blue" ]] && echo "green" || echo "blue"; }
+          color_ports() {
+              if [[ "$1" == "blue" ]]; then echo "$WEB_PORT_BLUE $API_PORT_BLUE"
+              else echo "$WEB_PORT_GREEN $API_PORT_GREEN"; fi
+          }
+          pm2_process_names() { echo "frontend-$1 backend-$1"; }
+
+          pm2_start_color() {
+              local color="$1"
+              read -r web_port api_port <<<"$(color_ports "$color")"
+              (
+                  cd "${ROOT_DIR}/${color}"
+                  COLOR="$color" WEB_PORT="$web_port" API_PORT="$api_port" \
+                      pm2 startOrReload ecosystem.config.js --update-env
+              )
+          }
+
+          pm2_stop_color() {
+              local color="$1"
+              read -r web_proc api_proc <<<"$(pm2_process_names "$color")"
+              pm2 stop "$web_proc" "$api_proc" 2>/dev/null || true
+          }
+
+          # ---- health check (inlined from health-check.sh) ----
+          health_check_one() {
+              local color="$1" label="$2" url="$3" max_time="${4:-5}"
+              for ((i = 1; i <= HEALTH_RETRIES; i++)); do
+                  if curl -fsS --max-time "$max_time" "$url" >/dev/null 2>&1; then
+                      log "health ok: ${color} ${label} (${url})"
+                      return 0
+                  fi
+                  sleep "$HEALTH_SLEEP"
+              done
+              log "health FAIL: ${color} ${label} (${url})"
+              return 1
+          }
+
+          health_check_color() {
+              local color="$1"
+              read -r web_port api_port <<<"$(color_ports "$color")"
+              health_check_one "$color" "web"     "http://127.0.0.1:${web_port}/api/health" \
+                && health_check_one "$color" "api"     "http://127.0.0.1:${api_port}/health" \
+                && health_check_one "$color" "healthz" "http://127.0.0.1:${web_port}/healthz" 15
+          }
+
+          # ---- nginx traffic switch (inlined from switch-traffic.sh) ----
+          switch_traffic() {
+              local target="$1"
+              read -r web_port api_port <<<"$(color_ports "$target")"
+              local template="${ROOT_DIR}/${target}/nginx/pupp-ms-csp-partner-upstreams.conf.template"
+              if [[ ! -f "$template" ]]; then
+                  log "ERROR: nginx template not found at $template"
+                  return 1
+              fi
+              local tmp
+              tmp="$(mktemp)"
+              sed -e "s/__FRONTEND_ACTIVE_PORT__/${web_port}/" \
+                  -e "s/__BACKEND_ACTIVE_PORT__/${api_port}/" \
+                  "$template" > "$tmp"
+              sudo tee "$NGINX_CONF" < "$tmp" > /dev/null
+              rm -f "$tmp"
+              if ! sudo nginx -t; then
+                  log "nginx -t failed; not reloading"
+                  return 1
+              fi
+              sudo systemctl reload nginx
+              echo "$target" > "$STATE_FILE"
+              log "traffic switched to ${target} (web:${web_port} api:${api_port})"
+          }
+
+          # ---- orchestrate (inlined from deploy-color.sh, KV removed) ----
+          target="$(idle_color)"
+          previous="$(active_color)"
+          log "deploy: ref=${GIT_SHA} branch=${GIT_BRANCH} target=${target} previous=${previous}"
+
+          dir="${ROOT_DIR}/${target}"
+          if [[ ! -d "$dir/.git" ]]; then
+              log "ERROR: ${dir} is not a git checkout"
+              exit 1
+          fi
+
+          cd "$dir"
+          git fetch --prune --tags origin "$GIT_BRANCH"
+          git checkout -q --detach "$GIT_SHA"
+          log "deploy: ${target} now at $(git rev-parse --short HEAD)"
+
+          # Runtime envs live outside the checkouts at ${ROOT_DIR}/env/{web,api}.env
+          # so blue/green do not carry host settings. Copy into apps/{web,api}/.env
+          # so Next.js and Nest auto-load them at build and start (NEXT_PUBLIC_* is
+          # baked from apps/web/.env). ecosystem.config.js handles PORT/NODE_ENV.
+          if [[ ! -f "$WEB_ENV_FILE" ]]; then
+              log "ERROR: web env file not found at $WEB_ENV_FILE"
+              exit 1
+          fi
+          if [[ ! -f "$API_ENV_FILE" ]]; then
+              log "ERROR: api env file not found at $API_ENV_FILE"
+              exit 1
+          fi
+          install -m 600 "$WEB_ENV_FILE" "${dir}/apps/web/.env"
+          install -m 600 "$API_ENV_FILE" "${dir}/apps/api/.env"
+
+          log "deploy: npm ci in ${target}"
+          npm ci
+
+          log "deploy: npm run build in ${target}"
+          npm run build
+
+          log "deploy: pm2 startOrReload ${target}"
+          if ! pm2_start_color "$target"; then
+              log "ERROR: pm2 startOrReload failed for ${target}"
+              exit 1
+          fi
+
+          log "deploy: health-checking ${target}"
+          if ! health_check_color "$target"; then
+              log "ERROR: health check failed for ${target}; stopping ${target}"
+              pm2_stop_color "$target"
+              exit 1
+          fi
+
+          log "deploy: switching traffic to ${target}"
+          if ! switch_traffic "$target"; then
+              log "ERROR: traffic switch failed; stopping ${target}"
+              pm2_stop_color "$target"
+              exit 1
+          fi
+
+          log "deploy: draining ${previous} for ${DRAIN_SECONDS}s"
+          sleep "$DRAIN_SECONDS"
+
+          log "deploy: stopping ${previous} pm2 processes"
+          pm2_stop_color "$previous"
+
+          log "deploy: success; active=${target} ref=${GIT_SHA}"
+          REMOTE
+
+      - name: Rollback on failure
+        if: failure()
+        env:
+          SSH_HOST: ${{ secrets.PROD_EC2_HOST }}
+          SSH_USER: ${{ secrets.PROD_EC2_USER }}
+        run: |
+          ssh -o BatchMode=yes "${SSH_USER}@${SSH_HOST}" bash -s <<'REMOTE' || true
+          set -euo pipefail
+
+          # nvm-installed node/npm/pm2 aren't on the non-interactive PATH
+          export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+          if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+              # shellcheck disable=SC1091
+              . "$NVM_DIR/nvm.sh"
+          fi
+
+          # ---- constants (mirror of deploy step) ----
+          ROOT_DIR="/home/azureuser/pupp-ms-csp-partner"
+          LOG_DIR="/home/azureuser/logs"
+          STATE_FILE="/home/azureuser/.current_env"
+          NGINX_CONF="/etc/nginx/conf.d/pupp-ms-csp-partner-upstreams.conf"
+          DEPLOY_LOG="${LOG_DIR}/deployments.log"
+          WEB_PORT_BLUE=3000
+          API_PORT_BLUE=3001
+          WEB_PORT_GREEN=4000
+          API_PORT_GREEN=4001
+          HEALTH_RETRIES=20
+          HEALTH_SLEEP=3
+
+          mkdir -p "$LOG_DIR"
+          log() {
+              local msg="[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [rollback] $*"
+              echo "$msg"
+              echo "$msg" >> "$DEPLOY_LOG"
+          }
+
+          active_color() { cat "$STATE_FILE" 2>/dev/null || echo "blue"; }
+          idle_color()   { [[ "$(active_color)" == "blue" ]] && echo "green" || echo "blue"; }
+          color_ports() {
+              if [[ "$1" == "blue" ]]; then echo "$WEB_PORT_BLUE $API_PORT_BLUE"
+              else echo "$WEB_PORT_GREEN $API_PORT_GREEN"; fi
+          }
+          pm2_process_names() { echo "frontend-$1 backend-$1"; }
+
+          pm2_start_color() {
+              local color="$1"
+              read -r web_port api_port <<<"$(color_ports "$color")"
+              (
+                  cd "${ROOT_DIR}/${color}"
+                  COLOR="$color" WEB_PORT="$web_port" API_PORT="$api_port" \
+                      pm2 startOrReload ecosystem.config.js --update-env
+              )
+          }
+
+          pm2_stop_color() {
+              local color="$1"
+              read -r web_proc api_proc <<<"$(pm2_process_names "$color")"
+              pm2 stop "$web_proc" "$api_proc" 2>/dev/null || true
+          }
+
+          health_check_one() {
+              local color="$1" label="$2" url="$3" max_time="${4:-5}"
+              for ((i = 1; i <= HEALTH_RETRIES; i++)); do
+                  if curl -fsS --max-time "$max_time" "$url" >/dev/null 2>&1; then
+                      log "health ok: ${color} ${label} (${url})"
+                      return 0
+                  fi
+                  sleep "$HEALTH_SLEEP"
+              done
+              log "health FAIL: ${color} ${label} (${url})"
+              return 1
+          }
+
+          health_check_color() {
+              local color="$1"
+              read -r web_port api_port <<<"$(color_ports "$color")"
+              health_check_one "$color" "web"     "http://127.0.0.1:${web_port}/api/health" \
+                && health_check_one "$color" "api"     "http://127.0.0.1:${api_port}/health" \
+                && health_check_one "$color" "healthz" "http://127.0.0.1:${web_port}/healthz" 15
+          }
+
+          switch_traffic() {
+              local target="$1"
+              read -r web_port api_port <<<"$(color_ports "$target")"
+              local template="${ROOT_DIR}/${target}/nginx/pupp-ms-csp-partner-upstreams.conf.template"
+              if [[ ! -f "$template" ]]; then
+                  log "ERROR: nginx template not found at $template"
+                  return 1
+              fi
+              local tmp
+              tmp="$(mktemp)"
+              sed -e "s/__FRONTEND_ACTIVE_PORT__/${web_port}/" \
+                  -e "s/__BACKEND_ACTIVE_PORT__/${api_port}/" \
+                  "$template" > "$tmp"
+              sudo tee "$NGINX_CONF" < "$tmp" > /dev/null
+              rm -f "$tmp"
+              if ! sudo nginx -t; then
+                  log "nginx -t failed; not reloading"
+                  return 1
+              fi
+              sudo systemctl reload nginx
+              echo "$target" > "$STATE_FILE"
+              log "traffic switched to ${target} (web:${web_port} api:${api_port})"
+          }
+
+          # ---- rollback logic (inlined from rollback.sh) ----
+          target="$(idle_color)"
+          failing="$(active_color)"
+          log "switching ${failing} -> ${target}"
+
+          # Previous successful deploy stopped ${target}'s pm2 processes as its final
+          # step, so nginx would be flipping to a dead upstream. Bring ${target} back
+          # up (its checkout still has node_modules + build artifacts on disk) and
+          # verify it answers before redirecting traffic.
+          log "starting ${target} pm2 processes"
+          if ! pm2_start_color "$target"; then
+              log "ERROR: rollback failed to start ${target}; leaving traffic on ${failing}"
+              exit 1
+          fi
+
+          if ! health_check_color "$target"; then
+              log "ERROR: rollback target ${target} failed health check; leaving traffic on ${failing}"
+              pm2_stop_color "$target"
+              exit 1
+          fi
+
+          switch_traffic "$target"
+
+          log "stopping ${failing} pm2 processes"
+          pm2_stop_color "$failing"
+
+          log "complete; active=${target}"
+          REMOTE
