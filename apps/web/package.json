@@ -16,7 +16,7 @@
 		"@fluentui/react-icons": "^2.0.318",
 		"@hookform/resolvers": "^5.2.2",
 		"@plausible-analytics/tracker": "^0.4.5",
-		"@react-pdf/renderer": "^4.3.0",
+		"@react-pdf/renderer": "^4.5.1",
 		"@repo/shared": "*",
 		"@repo/types": "*",
 		"@tanstack/react-query": "^5.90.21",
