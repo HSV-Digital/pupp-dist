@@ -7,7 +7,7 @@ export default defineConfig({
 		environment: 'node',
 		root: './src',
 		include: ['**/*.spec.ts'],
-		setupFiles: ['./vitest.setup.ts'],
+		setupFiles: ['../vitest.setup.ts'],
 	},
 	plugins: [swc.vite()],
 });
