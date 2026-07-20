@@ -463,24 +463,42 @@ function toPricingContextPayload(
 	};
 }
 
+// Linear-time replacement for `/^-+|-+$/g`-style trims, whose trailing
+// alternative backtracks polynomially on adversarial input.
+function trimEdgeChars(value: string, char: string): string {
+	let start = 0;
+	let end = value.length;
+	while (start < end && value[start] === char) {
+		start += 1;
+	}
+	while (end > start && value[end - 1] === char) {
+		end -= 1;
+	}
+	return value.slice(start, end);
+}
+
 function slugify(value: string): string {
-	const slug = value
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9-_]+/g, '-')
-		.replace(/-+/g, '-')
-		.replace(/^-+|-+$/g, '');
+	const slug = trimEdgeChars(
+		value
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9-_]+/g, '-')
+			.replace(/-+/g, '-'),
+		'-',
+	);
 
 	return slug.length > 0 ? slug : 'value';
 }
 
 function slugifyUnderscore(value: string): string {
-	const slug = value
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '_')
-		.replace(/_+/g, '_')
-		.replace(/^_+|_+$/g, '');
+	const slug = trimEdgeChars(
+		value
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '_')
+			.replace(/_+/g, '_'),
+		'_',
+	);
 
 	return slug.length > 0 ? slug : 'value';
 }
@@ -589,12 +607,14 @@ function escapeXmlText(value: string): string {
 }
 
 function decodeXmlText(value: string): string {
+	// Decode `&amp;` last so `&amp;lt;` yields the literal text `&lt;`
+	// instead of being double-decoded into `<`.
 	return value
-		.replaceAll('&amp;', '&')
 		.replaceAll('&lt;', '<')
 		.replaceAll('&gt;', '>')
 		.replaceAll('&quot;', '"')
-		.replaceAll('&apos;', "'");
+		.replaceAll('&apos;', "'")
+		.replaceAll('&amp;', '&');
 }
 
 function extractFirstCapture(value: string, pattern: RegExp): string | null {
@@ -3701,14 +3721,15 @@ export class ProposalOptionsEmailService {
 		customerName: string,
 	): string {
 		const fallbackBase = `${slugify(customerName || 'customer')}-proposal`;
-		const normalized = input
-			.trim()
-			.toLowerCase()
-			.replace(/\.pptx$/i, '')
-			.replace(/[^a-z0-9-_]+/g, '-')
-			.replace(/-+/g, '-')
-			.replace(/^-+|-+$/g, '')
-			.slice(0, 120);
+		const normalized = trimEdgeChars(
+			input
+				.trim()
+				.toLowerCase()
+				.replace(/\.pptx$/i, '')
+				.replace(/[^a-z0-9-_]+/g, '-')
+				.replace(/-+/g, '-'),
+			'-',
+		).slice(0, 120);
 		const base = normalized.length > 0 ? normalized : fallbackBase;
 		return `${base}.pptx`;
 	}

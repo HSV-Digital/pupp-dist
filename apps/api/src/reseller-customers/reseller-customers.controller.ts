@@ -13,6 +13,7 @@ import {
 	ValidationPipe,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { serializeSseData } from '../common/sse';
 import { resolveAuthenticatedAuditActorContext } from '../audit/audit-actor-context';
 import { AuditService } from '../audit/audit.service';
 import { getErrorStatus, getRequestAuditFields } from '../audit/audit-request';
@@ -381,11 +382,11 @@ export class ResellerCustomersController {
 				user.orgId,
 				user.userId,
 				(saved, total) => {
-					res.write(`data: ${JSON.stringify({ saved, total })}\n\n`);
+					res.write(serializeSseData({ saved, total }));
 				},
 			);
 
-			res.write(`data: ${JSON.stringify({ done: true, created })}\n\n`);
+			res.write(serializeSseData({ done: true, created }));
 
 			void this.auditService.recordEvent({
 				eventName: 'reseller_customer.bulk_create.success',
@@ -400,7 +401,9 @@ export class ResellerCustomersController {
 			});
 		} catch (error) {
 			res.write(
-				`data: ${JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' })}\n\n`,
+				serializeSseData({
+					error: error instanceof Error ? error.message : 'Unknown error',
+				}),
 			);
 
 			void this.auditService.recordEvent({

@@ -700,11 +700,14 @@ function listChangesInfoArtifacts(zip: PizZip): string[] {
 	const presentationRelsXml = zip
 		.file('ppt/_rels/presentation.xml.rels')
 		?.asText();
-	if (
-		presentationRelsXml?.includes(
+	const hasChangesInfoRelationship = (
+		presentationRelsXml?.match(/<Relationship\b[^>]*\/>/g) ?? []
+	).some(
+		(relationship) =>
+			relationship.match(/\bType="([^"]+)"/)?.[1] ===
 			'http://schemas.microsoft.com/office/2016/11/relationships/changesInfo',
-		)
-	) {
+	);
+	if (hasChangesInfoRelationship) {
 		artifacts.push(
 			'ppt/_rels/presentation.xml.rels (changesInfo relationship)',
 		);

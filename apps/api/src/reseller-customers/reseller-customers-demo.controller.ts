@@ -18,6 +18,7 @@ import { AuditService } from '../audit/audit.service';
 import { getErrorStatus, getRequestAuditFields } from '../audit/audit-request';
 import { Public } from '../auth/decorators/public.decorator';
 import { DemoModeGuard } from '../common/guards/demo-mode.guard';
+import { serializeSseData } from '../common/sse';
 import { getEnv } from '../config/env';
 import { BulkCreateResellerCustomersDto } from './dto/bulk-create-reseller-customers.dto';
 import { CreateResellerCustomerDto } from './dto/create-reseller-customer.dto';
@@ -375,11 +376,11 @@ export class ResellerCustomersDemoController {
 				this.demoOrgId,
 				this.demoUserId,
 				(saved, total) => {
-					res.write(`data: ${JSON.stringify({ saved, total })}\n\n`);
+					res.write(serializeSseData({ saved, total }));
 				},
 			);
 
-			res.write(`data: ${JSON.stringify({ done: true, created })}\n\n`);
+			res.write(serializeSseData({ done: true, created }));
 
 			void this.auditService.recordEvent({
 				eventName: 'reseller_customer.bulk_create.success',
@@ -394,7 +395,9 @@ export class ResellerCustomersDemoController {
 			});
 		} catch (error) {
 			res.write(
-				`data: ${JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' })}\n\n`,
+				serializeSseData({
+					error: error instanceof Error ? error.message : 'Unknown error',
+				}),
 			);
 
 			void this.auditService.recordEvent({

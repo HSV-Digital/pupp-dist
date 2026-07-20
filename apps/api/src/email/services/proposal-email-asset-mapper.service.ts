@@ -153,22 +153,38 @@ function normalizeOptionalRenewalPrice(
 	return roundCurrency(Math.max(0, parsed));
 }
 
+// Linear-time replacement for `/^-+|-+$/g`-style trims, whose trailing
+// alternative backtracks polynomially on adversarial input.
+function trimEdgeChars(value: string, char: string): string {
+	let start = 0;
+	let end = value.length;
+	while (start < end && value[start] === char) {
+		start += 1;
+	}
+	while (end > start && value[end - 1] === char) {
+		end -= 1;
+	}
+	return value.slice(start, end);
+}
+
 function slugify(value: string): string {
-	return value
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-+|-+$/g, '')
-		.slice(0, 80);
+	return trimEdgeChars(
+		value
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-'),
+		'-',
+	).slice(0, 80);
 }
 
 function slugifyUnderscore(value: string): string {
-	const slug = value
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '_')
-		.replace(/^_+|_+$/g, '')
-		.slice(0, 120);
+	const slug = trimEdgeChars(
+		value
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '_'),
+		'_',
+	).slice(0, 120);
 	return slug.length > 0 ? slug : 'value';
 }
 

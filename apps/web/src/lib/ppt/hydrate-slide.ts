@@ -100,12 +100,14 @@ function extractPlaceholderKey(text: string): PlaceholderKey | null {
 }
 
 function decodeXml(value: string): string {
+	// Decode `&amp;` last so `&amp;lt;` yields the literal text `&lt;`
+	// instead of being double-decoded into `<`.
 	return value
-		.replaceAll('&amp;', '&')
 		.replaceAll('&lt;', '<')
 		.replaceAll('&gt;', '>')
 		.replaceAll('&quot;', '"')
-		.replaceAll('&apos;', "'");
+		.replaceAll('&apos;', "'")
+		.replaceAll('&amp;', '&');
 }
 
 function escapeXml(value: string): string {

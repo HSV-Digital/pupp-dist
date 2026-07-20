@@ -16,12 +16,28 @@ export function decodeResellerApiTokenPayload(
 	) as ResellerApiTokenPayload;
 }
 
+// Stretches the configured secret with scrypt so a leaked token's signature
+// cannot be brute-forced offline if the secret is low-entropy. Derivation is
+// memoized because scrypt is intentionally expensive.
+const derivedHmacKeysBySecret = new Map<string, Buffer>();
+
+function deriveResellerApiTokenHmacKey(secret: string): Buffer {
+	const cached = derivedHmacKeysBySecret.get(secret);
+	if (cached) {
+		return cached;
+	}
+
+	const key = crypto.scryptSync(secret, 'reseller-api-token-hmac-v1', 32);
+	derivedHmacKeysBySecret.set(secret, key);
+	return key;
+}
+
 export function signResellerApiTokenPayload(
 	encodedPayload: string,
 	secret: string,
 ): string {
 	return crypto
-		.createHmac('sha256', secret)
+		.createHmac('sha256', deriveResellerApiTokenHmacKey(secret))
 		.update(encodedPayload)
 		.digest('base64url');
 }

@@ -99,9 +99,20 @@ function removeYellowHighlights(xml) {
 	return xml.replace(/<w:highlight w:val="yellow"\/>/g, '');
 }
 
+// Strips tags repeatedly until none remain, so removing one tag can never
+// splice the surrounding text into a new, unstripped tag.
+function stripXmlTags(value) {
+	let previous;
+	do {
+		previous = value;
+		value = value.replace(/<[^>]+>/g, '');
+	} while (value !== previous);
+	return value;
+}
+
 function reapplyManualPlaceholderHighlights(xml) {
 	return xml.replace(/<w:p[ >][\s\S]*?<\/w:p>/g, (paragraphXml) => {
-		const paragraphText = paragraphXml.replace(/<[^>]+>/g, '');
+		const paragraphText = stripXmlTags(paragraphXml);
 		if (!/[\[\]]/.test(paragraphText)) {
 			return paragraphXml;
 		}
@@ -110,7 +121,7 @@ function reapplyManualPlaceholderHighlights(xml) {
 		return paragraphXml.replace(
 			/<w:r([ >][\s\S]*?)<\/w:r>/g,
 			(fullRun, inner) => {
-				const textContent = inner.replace(/<[^>]+>/g, '');
+				const textContent = stripXmlTags(inner);
 				const hasOpen = textContent.includes('[');
 				const hasClose = textContent.includes(']');
 
@@ -260,7 +271,7 @@ function findSolutionRows(xml) {
 
 	let match;
 	while ((match = rowRegex.exec(xml)) !== null) {
-		const textContent = match[0].replace(/<[^>]+>/g, '');
+		const textContent = stripXmlTags(match[0]);
 		if (/Solution\s*\d/.test(textContent)) {
 			rows.push({
 				start: match.index,

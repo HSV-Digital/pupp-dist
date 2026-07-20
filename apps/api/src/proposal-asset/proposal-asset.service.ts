@@ -176,12 +176,26 @@ function normalizeFlyerPlaceholderName(raw: string): string {
 		return 'seats';
 	}
 
-	const normalized = trimmed
-		.replace(/^add\s+/, 'add_')
-		.replace(/[^a-z0-9]+/g, '_')
-		.replace(/^_+|_+$/g, '');
+	const normalized = trimEdgeChars(
+		trimmed.replace(/^add\s+/, 'add_').replace(/[^a-z0-9]+/g, '_'),
+		'_',
+	);
 
 	return normalized;
+}
+
+// Linear-time replacement for `/^_+|_+$/g`-style trims, whose trailing
+// alternative backtracks polynomially on adversarial input.
+function trimEdgeChars(value: string, char: string): string {
+	let start = 0;
+	let end = value.length;
+	while (start < end && value[start] === char) {
+		start += 1;
+	}
+	while (end > start && value[end - 1] === char) {
+		end -= 1;
+	}
+	return value.slice(start, end);
 }
 
 function extractFlyerTemplateTokens(value: string): string[] {
@@ -215,12 +229,14 @@ function extractFlyerTemplateTokensFromDrawingXml(xml: string): string[] {
 }
 
 function decodeXmlText(value: string): string {
+	// Decode `&amp;` last so `&amp;lt;` yields the literal text `&lt;`
+	// instead of being double-decoded into `<`.
 	return value
-		.replaceAll('&amp;', '&')
 		.replaceAll('&lt;', '<')
 		.replaceAll('&gt;', '>')
 		.replaceAll('&quot;', '"')
-		.replaceAll('&apos;', "'");
+		.replaceAll('&apos;', "'")
+		.replaceAll('&amp;', '&');
 }
 
 function escapeXmlText(value: string): string {

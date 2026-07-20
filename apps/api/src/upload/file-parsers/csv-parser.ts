@@ -1,5 +1,8 @@
 import type { ParsedFile } from '../upload.types';
 
+// Matches the upload controllers' multer fileSize limit.
+const MAX_CSV_BYTES = 50 * 1024 * 1024;
+
 function normalizeCsvText(buffer: Buffer): string {
 	const text = buffer.toString('utf-8');
 	return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
@@ -77,6 +80,15 @@ function parseCsvText(text: string): string[][] {
 }
 
 export function parseCsvBuffer(buffer: Buffer): ParsedFile {
+	if (!Buffer.isBuffer(buffer)) {
+		throw new TypeError('CSV input must be a Buffer');
+	}
+	if (buffer.length > MAX_CSV_BYTES) {
+		throw new RangeError(
+			`CSV file exceeds the ${MAX_CSV_BYTES / (1024 * 1024)}MB limit`,
+		);
+	}
+
 	const text = normalizeCsvText(buffer);
 	const rawRows = parseCsvText(text);
 
