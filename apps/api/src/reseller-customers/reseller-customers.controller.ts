@@ -382,11 +382,13 @@ export class ResellerCustomersController {
 				user.orgId,
 				user.userId,
 				(saved, total) => {
-					res.write(serializeSseData({ saved, total }));
+					res.write(
+						serializeSseData({ saved: Number(saved), total: Number(total) }),
+					);
 				},
 			);
 
-			res.write(serializeSseData({ done: true, created }));
+			res.write(serializeSseData({ done: true, created: Number(created) }));
 
 			void this.auditService.recordEvent({
 				eventName: 'reseller_customer.bulk_create.success',
